@@ -99,7 +99,7 @@ docker-compose down
 
 ```bash
 docker pull tiranousor/deepcad
-docker run -d --gpus all -p 8080:8080 --name deepcad tiranousor/deepcad:latest
+docker run -d --gpus all -p 8000:8000 --name deepcad tiranousor/deepcad
 ```
 После запуска сервис будет доступен по адресу:
 http://localhost:8000/docs
