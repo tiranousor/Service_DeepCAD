@@ -1,0 +1,13 @@
+services:
+  deepcad:
+    image: tiranousor/deepcad:latest
+    restart: unless-stopped
+
+    # Поддержка GPU
+    gpus: all
+
+    # Проброс портов
+    ports:
+      - "8000:8000"
+
+
