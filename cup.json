@@ -1,0 +1,127 @@
+{
+  "sequence": [
+    { "type": "ExtrudeFeature", "entity": "extrude_1" },
+    { "type": "ExtrudeFeature", "entity": "extrude_2" },
+    { "type": "ExtrudeFeature", "entity": "extrude_3" }
+  ],
+  "entities": {
+    "extrude_1": {
+      "start_extent": { "type": "ProfilePlaneStartDefinition" },
+      "profiles": [ { "sketch": "sk_1", "profile": "p_1" } ],
+      "operation": "NewBodyFeatureOperation",
+      "extent_type": "OneSideFeatureExtentType",
+      "extent_one": { "distance": { "value": 20.0 } }
+    },
+    "extrude_2": {
+      "start_extent": { "type": "ProfilePlaneStartDefinition" },
+      "profiles": [ { "sketch": "sk_1", "profile": "p_2" } ],
+      "operation": "CutFeatureOperation",
+      "extent_type": "OneSideFeatureExtentType",
+      "extent_one": { "distance": { "value": 18.0 } }
+    },
+    "extrude_3": {
+      "start_extent": { "type": "ProfilePlaneStartDefinition" },
+      "profiles": [ { "sketch": "sk_2", "profile": "p_3" } ],
+      "operation": "JoinFeatureOperation",
+      "extent_type": "OneSideFeatureExtentType",
+      "extent_one": { "distance": { "value": 3.0 } }
+    },
+    "sk_1": {
+      "transform": {
+        "origin": { "x": 0, "y": 0, "z": 0 },
+        "z_axis": { "x": 0, "y": 0, "z": 1 },
+        "x_axis": { "x": 1, "y": 0, "z": 0 },
+        "y_axis": { "x": 0, "y": 1, "z": 0 }
+      },
+      "profiles": {
+        "p_1": {
+          "loops": [
+            {
+              "is_outer": true,
+              "profile_curves": [
+                {
+                  "type": "Circle3D",
+                  "center_point": { "x": 0, "y": 0 },
+                  "radius": 10,
+                  "normal": { "x": 0, "y": 0, "z": 1 }
+                }
+              ]
+            }
+          ]
+        },
+        "p_2": {
+          "loops": [
+            {
+              "is_outer": true,
+              "profile_curves": [
+                {
+                  "type": "Circle3D",
+                  "center_point": { "x": 0, "y": 0 },
+                  "radius": 9,
+                  "normal": { "x": 0, "y": 0, "z": 1 }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "sk_2": {
+      "transform": {
+        "origin": { "x": 6.2, "y": -1, "z": 10 },
+        "z_axis": { "x": 0, "y": 1, "z": 0 },
+        "x_axis": { "x": -1, "y": 0, "z": 0 },
+        "y_axis": { "x": 0, "y": 0, "z": 1}
+      },
+      "profiles": {
+        "p_3": {
+          "loops": [
+            {
+              "is_outer": true,
+              "profile_curves": [
+                {
+                  "type": "Arc3D",
+                  "start_point": { "x": -3.5, "y": 9 },
+                  "end_point": { "x": -3.5, "y": -9 },
+                  "center_point": { "x": 0, "y": 0 },
+                  "radius": 10,
+                  "normal": { "x": 0, "y": 1, "z": 0 },
+                  "start_angle": 0.5,
+                  "end_angle": 3.0,
+                  "reference_vector": { "x": 0, "y": 1 }
+                },
+                {
+                  "type": "Line3D",
+                  "start_point": { "x": -3.5, "y": -9 },
+                  "end_point": { "x": -3.5, "y": -8 }
+                },
+                {
+                  "type": "Arc3D",
+                  "start_point": { "x": -3.5, "y": -8 },
+                  "end_point": { "x": -3.5, "y": 8 },
+                  "center_point": { "x": 0, "y": 0 },
+                  "radius": 9,
+                  "normal": { "x": 0, "y": 1, "z": 0 },
+                  "start_angle": 4.93,
+                  "end_angle": 2.5,
+                  "reference_vector": { "x": 1, "y": 0 }
+                },
+                {
+                  "type": "Line3D",
+                  "start_point": { "x": -3.5, "y": 8 },
+                  "end_point": { "x": -3.5, "y": 9 }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "properties": {
+    "bounding_box": {
+      "max_point": { "x": 22, "y": 10, "z": 20 },
+      "min_point": { "x": -10, "y": -10, "z": 0 }
+    }
+  }
+}
