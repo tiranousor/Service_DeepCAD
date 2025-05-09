@@ -92,11 +92,14 @@ docker-compose down
 
 ## Образ Docker
 
-Проект также доступен в Docker Hub:  
+Готовый образ сервиса доступен в Docker Hub: 
 👉 [tiranousor/deepcad](https://hub.docker.com/r/tiranousor/deepcad)
 
 Вы можете использовать его напрямую, без клонирования репозитория.
 
 ```bash
 docker pull tiranousor/deepcad
+docker run -d --gpus all -p 8080:8080 --name deepcad tiranousor/deepcad:latest
 ```
+После запуска сервис будет доступен по адресу:
+http://localhost:8000/docs
