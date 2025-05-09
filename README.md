@@ -105,3 +105,6 @@ docker run -d --gpus all -p 8000:8000 --name deepcad tiranousor/deepcad
 После запуска сервис будет доступен по адресу:
 
 http://localhost:8000/docs
+
+## Примечание
+В качестве теста для  `/convert` можно использовать файл  `cup.json`
