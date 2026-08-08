@@ -2,98 +2,102 @@
 
 ## Goal
 
-The extension adds a new input mapping to the existing DeepCAD service:
+The extension introduces natural-language mapping while preserving the original
+DeepCAD parametric representation. The result remains an editable engineering
+history based on sketches, extrusion parameters and boolean operations instead
+of a triangle mesh.
 
-`natural-language description -> engineering CAD representation -> STEP`
+## Methods
 
-The key requirement is to preserve the original DeepCAD representation instead
-of generating a mesh. The final model therefore still consists of editable CAD
-operations (sketch curves and extrusion/boolean operations).
-
-## Architecture
-
-Two complementary Text-to-CAD methods are included.
-
-### 1. Constrained engineering baseline
-
-`text_to_cad.py` parses explicit engineering descriptions and compiles them to
-the same JSON schema already consumed by `CADSequence.from_dict`.
-
-Current supported descriptions:
-
-- cylinder / disk;
-- hollow cylinder / tube;
-- rectangular block / plate;
-- centered circular through-hole;
-- Russian and English engineering wording;
-- dimensions written as named values or `60x40x5`.
-
-Examples:
+### A. Deterministic constrained mapping (baseline)
 
 ```text
-Цилиндр диаметром 20 мм высотой 35 мм
-Труба внешний диаметр 30 мм, внутренний диаметр 20 мм, длина 50 мм
-Пластина 60x40x5 мм с отверстием диаметром 10 мм
-Cylinder diameter 24 mm height 12 mm
+text -> engineering parser -> DeepCAD JSON -> CADSequence -> OpenCASCADE -> STEP
 ```
 
-This method is deterministic and useful as a reproducible baseline for the
-thesis. Invalid or incomplete descriptions are rejected before OpenCASCADE is
-called.
+Supported baseline descriptions include cylinders, tubes, rectangular
+blocks/plates and centered circular holes in Russian and English. This path is
+CPU-safe and is the reproducible baseline for the thesis.
 
-### 2. Trainable Text -> DeepCAD latent mapping
-
-`text2cad_ml.py` implements a Transformer text encoder. It predicts a vector in
-the existing 256-dimensional DeepCAD latent space. The pretrained DeepCAD
-autoencoder remains frozen:
+### B. Neural Text -> DeepCAD mapping
 
 ```text
 text
-  -> Text Transformer
-  -> predicted DeepCAD latent z
-  -> existing DeepCAD decoder
-  -> command logits / argument logits
-  -> logits2vec
+  -> compositional text tokenizer
+  -> Transformer Text Encoder
+  -> predicted 256-D DeepCAD latent z
+  -> frozen pretrained DeepCAD decoder
+  -> Line / Arc / Circle / SOL / Ext / EOS
   -> CADSequence
   -> OpenCASCADE
   -> STEP
 ```
 
-This architecture isolates the research question: only the input mapping is
-changed. The CAD decoder and command vocabulary are shared with the previous
-DeepCAD implementation.
+Only the Text Encoder is optimized. The previous DeepCAD decoder remains the
+shared CAD generator, so the research variable is the input mapping rather than
+a different CAD representation.
 
-The training loss is:
+Numbers are tokenized compositionally. For example `-12.5` becomes a numeric
+marker plus sign/digit/decimal tokens. Therefore dimensions do not have to occur
+verbatim during training to be representable.
+
+## Training objective
+
+The text encoder is optimized with both latent-space and decoded CAD losses:
 
 ```text
-L_text = MSE(z_text, z_cad) + 0.1 * (1 - cosine_similarity(z_text, z_cad))
+L = 1.00 * L_latent + 0.10 * L_command + 0.25 * L_arguments
+
+L_latent = MSE(z_text, z_cad)
+         + 0.1 * (1 - cosine_similarity(z_text, z_cad))
 ```
 
-where `z_cad` is produced by the frozen pretrained DeepCAD encoder.
+`L_command` is cross entropy over DeepCAD command classes and `L_arguments` is
+cross entropy only over arguments that are valid for the ground-truth command
+according to `CMD_ARGS_MASK`. Gradients pass through the frozen DeepCAD decoder
+to the Text Encoder, but decoder weights are not updated.
 
-## Dataset generation
+This is stronger than latent MSE alone because the learned representation is
+explicitly pressured to decode into the correct engineering history.
 
-`build_text2cad_annotations.py` can create paired training data directly from
-the original DeepCAD JSON histories:
+## Data
+
+### Generated reproducible captions
+
+`build_text2cad_annotations.py` reads the original DeepCAD JSON histories and
+keeps the original train/validation/test split. It can generate multiple wording
+variants per CAD model without changing geometry or dimensions.
 
 ```bash
-python build_text2cad_annotations.py \
+python3 build_text2cad_annotations.py \
   --data-root data \
   --output data/text2cad_annotations.jsonl \
-  --language ru
+  --language ru \
+  --variants 3
 ```
 
-Each row has the form:
+### Official Text2CAD captions
 
-```json
-{"id":"0000/00001234","text":"...","split":"train","source":"deepcad_history_template"}
+`import_text2cad_annotations.py` supports the official Text2CAD CSV format using
+its shared DeepCAD `uid` and annotation columns such as `abstract`, `beginner`,
+`intermediate`, `expert` and `description`.
+
+The external dataset is not downloaded automatically because its own license
+must be accepted by the user. After downloading the CSV:
+
+```bash
+python3 import_text2cad_annotations.py \
+  --csv /path/to/text2cad_v1.1.csv \
+  --split-json data/train_val_test_split.json \
+  --output data/text2cad_official.jsonl
 ```
 
-For experiments with more natural semantic captions, the same JSONL format can
-be populated with external/manual descriptions while keeping the CAD targets
-unchanged.
+The generated Russian captions and official captions can then be merged with
+`merge_text2cad_annotations.py`.
 
 ## Training
+
+Neural training uses the historical CUDA DeepCAD runtime and a frozen AE:
 
 ```bash
 python train_text2cad.py \
@@ -104,75 +108,101 @@ python train_text2cad.py \
   --output proj_log/Text2CAD
 ```
 
-The script saves:
+Saved artifacts:
 
 - `vocab.json`;
+- `metrics.jsonl`;
 - `latest.pth`;
 - `best.pth`.
 
-The current DeepCAD implementation is CUDA-only, therefore Text-to-CAD training
-uses CUDA as well.
+`best.pth` is selected on validation loss. Training uses gradient clipping,
+ReduceLROnPlateau and early stopping, and can resume from `latest.pth`.
 
-## API
+## Evaluation
 
-### Inspect generated DeepCAD history
+`evaluate_text2cad.py` evaluates held-out annotations and excludes EOS padding
+from command accuracy. It reports:
 
-`POST /text_to_cad/json`
+- latent MSE and cosine similarity;
+- command accuracy;
+- valid argument accuracy;
+- exact command sequence accuracy;
+- CADSequence validity;
+- invalidity ratio;
+- optional OpenCASCADE solid validity;
+- inference time.
 
-```json
-{
-  "description": "Пластина 60x40x5 мм с отверстием диаметром 10 мм"
-}
-```
-
-The response contains parsed engineering parameters and the exact DeepCAD JSON.
-This endpoint is useful for debugging and for demonstrating interpretability at
-the thesis defense.
-
-### Generate STEP
-
-`POST /text_to_cad`
-
-```json
-{
-  "description": "Цилиндр диаметром 20 мм высотой 35 мм"
-}
-```
-
-The service compiles the description into a DeepCAD construction history,
-creates the solid through the existing OpenCASCADE pipeline and returns a STEP
-file.
-
-## Tests
-
-Parser/schema tests are located in `tests/test_text_to_cad.py`:
+Example:
 
 ```bash
-python -m unittest tests.test_text_to_cad
+python evaluate_text2cad.py \
+  --annotations data/text2cad_annotations.jsonl \
+  --data-root data \
+  --checkpoint proj_log/Text2CAD/best.pth \
+  --split test \
+  --geometry
 ```
 
-They do not require OpenCASCADE and verify parsing, dimensions, loops and
-DeepCAD-compatible operation structure.
+## APIs
 
-## Recommended thesis experiments
+### macOS / CPU baseline
 
-Compare at least three systems:
+`main_text_service.py`:
 
-1. deterministic constrained mapping (baseline);
-2. Text Transformer -> DeepCAD latent -> existing decoder;
-3. optionally a direct text-to-command decoder as an ablation.
+- `GET /health`;
+- `POST /text_to_cad/json`;
+- `POST /text_to_cad`.
 
-Report:
+Run with:
 
-- syntactic validity of generated command sequences;
-- percentage of sequences successfully converted to a solid;
-- command accuracy and argument accuracy where paired ground truth exists;
-- Chamfer Distance / MMD / JSD on sampled generated geometry for comparability
-  with the previous DeepCAD work;
-- dimensional error for explicit engineering prompts;
-- inference time;
-- ablation of latent loss components and text encoder depth.
+```bash
+docker compose -f docker-compose.mac.yml up --build
+```
 
-This gives the project a clear research contribution: multiple mappings into a
-single parametric CAD representation, with both deterministic and learned
-methods evaluated under the same decoder and geometry backend.
+Swagger: `http://localhost:8000/docs`.
+
+### Neural CUDA API
+
+`main_neural_text_service.py`:
+
+- `GET /health`;
+- `POST /text_to_cad/neural/vector`;
+- `POST /text_to_cad/neural`.
+
+The service loads `best.pth`, `vocab.json` and the existing DeepCAD AE
+checkpoint. If an artifact is absent, the API starts in `not_ready` mode and
+reports the exact loading error through `/health`.
+
+Run on Linux + NVIDIA GPU:
+
+```bash
+docker compose -f docker-compose.gpu.yml up --build neural
+```
+
+Swagger: `http://localhost:8001/docs`.
+
+## One-command workflow
+
+```bash
+bash text2cad_pipeline.sh diagnose
+bash text2cad_pipeline.sh prepare
+bash text2cad_pipeline.sh train
+bash text2cad_pipeline.sh eval
+bash text2cad_pipeline.sh serve-neural
+```
+
+For a full operational checklist see `RUN_TEXT2CAD.md`.
+
+## Thesis experiment design
+
+The main controlled comparison is:
+
+1. deterministic constrained text mapping;
+2. neural Text Transformer -> DeepCAD latent -> frozen DeepCAD decoder;
+3. optional direct text-to-command decoder as a later ablation.
+
+Keep the CAD decoder and geometry backend fixed across the first two methods.
+Report quantitative results on the held-out split and separately show qualitative
+STEP examples. The original DeepCAD COV/MMD/JSD values remain useful for
+continuity with the previous work, while Text-to-CAD additionally requires
+sequence accuracy, invalidity and text-conditioned geometric evaluation.
