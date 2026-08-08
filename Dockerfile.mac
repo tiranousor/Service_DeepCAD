@@ -1,0 +1,10 @@
+FROM tiranousor/deepcad:latest
+
+# The historical DeepCAD image contains the CAD/OpenCASCADE stack, but not
+# the lightweight web dependencies needed by the Mac-safe Text-to-CAD API.
+RUN /opt/conda/bin/python -m pip install --no-cache-dir \
+    fastapi==0.115.11 \
+    uvicorn==0.33.0 \
+    pydantic==2.10.6
+
+WORKDIR /workspace
