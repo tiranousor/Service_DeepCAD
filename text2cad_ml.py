@@ -5,10 +5,9 @@ mapping from tokenized text to the latent code ``z`` of the pretrained DeepCAD
 autoencoder. At inference the existing ``TrainerAE.decode`` converts this z to
 the standard DeepCAD command vector (Line/Arc/Circle/SOL/Ext/EOS).
 
-This keeps the new modality compatible with the already trained CAD decoder and
-makes the Text-to-CAD experiment directly comparable with the original system.
-Compatible with the old PyTorch stack used by the project (no HuggingFace
-runtime is required).
+Numbers are tokenized compositionally (sign/digits/decimal point) instead of as
+whole dimension strings. Thus a dimension not seen verbatim during training can
+still be represented using known numeric tokens.
 """
 
 from __future__ import annotations
@@ -16,19 +15,19 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from dataclasses import dataclass
-from typing import Dict, Iterable, List, Sequence
+from typing import Dict, Iterable, List
 
 import torch
 import torch.nn as nn
 
 
-TOKEN_RE = re.compile(r"[a-zа-я0-9]+(?:[\.,][0-9]+)?|x|х|×", re.IGNORECASE)
+RAW_TOKEN_RE = re.compile(r"[+-]?\d+(?:[\.,]\d+)?|[a-zа-я]+|×", re.IGNORECASE)
 
 
 class TextVocabulary:
     PAD = "<pad>"
     UNK = "<unk>"
+    NUM = "<num>"
 
     def __init__(self, stoi: Dict[str, int]):
         self.stoi = dict(stoi)
@@ -49,7 +48,19 @@ class TextVocabulary:
 
     @staticmethod
     def tokenize(text: str) -> List[str]:
-        return TOKEN_RE.findall(text.lower().replace("ё", "е"))
+        text = text.lower().replace("ё", "е").replace("×", "x").replace("х", "x")
+        raw_tokens = RAW_TOKEN_RE.findall(text)
+        result = []
+        for token in raw_tokens:
+            normalized = token.replace(",", ".")
+            # Numeric values are represented compositionally. Example:
+            # -12.5 -> <num>, -, 1, 2, ., 5
+            if re.match(r"^[+-]?\d", normalized):
+                result.append(TextVocabulary.NUM)
+                result.extend(list(normalized))
+            else:
+                result.append(normalized)
+        return result
 
     def encode(self, text: str, max_len: int) -> List[int]:
         ids = [self.stoi.get(t, self.stoi[self.UNK]) for t in self.tokenize(text)][:max_len]
@@ -79,7 +90,7 @@ class TextLatentEncoder(nn.Module):
         nhead: int = 8,
         num_layers: int = 4,
         dim_feedforward: int = 512,
-        max_len: int = 64,
+        max_len: int = 128,
         dropout: float = 0.1,
         pad_idx: int = 0,
     ):
