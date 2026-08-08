@@ -1,0 +1,70 @@
+services:
+  neural:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: service-deepcad-text2cad:gpu
+    gpus: all
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      - PYTHONPATH=/workspace:/app:/app/CadGen:/app/DeepCAD:/app/DeepCAD/CadGen
+      - DEEPCAD_PROJ_DIR=/app/proj_log
+      - DEEPCAD_AE_EXP_NAME=DeepCAD_Optimized
+      - DEEPCAD_AE_CKPT=500
+      - TEXT2CAD_CKPT=/workspace/proj_log/Text2CAD/best.pth
+      - TEXT2CAD_VOCAB=/workspace/proj_log/Text2CAD/vocab.json
+      - TEXT2CAD_OUTPUT_DIR=/workspace/generated_steps
+    ports:
+      - "8001:8000"
+    command: /usr/local/bin/deepcad-python -m uvicorn main_neural_text_service:app --host 0.0.0.0 --port 8000
+
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: service-deepcad-text2cad:gpu
+    gpus: all
+    profiles: ["train"]
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      - PYTHONPATH=/workspace:/app:/app/CadGen:/app/DeepCAD:/app/DeepCAD/CadGen
+    command: >-
+      /usr/local/bin/deepcad-python train_text2cad.py
+      --annotations /workspace/data/text2cad_annotations.jsonl
+      --data-root /workspace/data
+      --ae-proj-dir /app/proj_log
+      --ae-exp-name DeepCAD_Optimized
+      --ae-ckpt 500
+      --output /workspace/proj_log/Text2CAD
+      --epochs 80
+      --batch-size 32
+      --lr 0.0003
+      --patience 10
+
+  evaluator:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: service-deepcad-text2cad:gpu
+    gpus: all
+    profiles: ["eval"]
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      - PYTHONPATH=/workspace:/app:/app/CadGen:/app/DeepCAD:/app/DeepCAD/CadGen
+    command: >-
+      /usr/local/bin/deepcad-python evaluate_text2cad.py
+      --annotations /workspace/data/text2cad_annotations.jsonl
+      --data-root /workspace/data
+      --checkpoint /workspace/proj_log/Text2CAD/best.pth
+      --ae-proj-dir /app/proj_log
+      --ae-exp-name DeepCAD_Optimized
+      --ae-ckpt 500
+      --split test
+      --geometry
+      --output /workspace/proj_log/Text2CAD/evaluation.json
