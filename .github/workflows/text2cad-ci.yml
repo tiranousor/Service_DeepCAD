@@ -1,0 +1,31 @@
+name: Text2CAD checks
+
+on:
+  pull_request:
+    branches: ["main.java"]
+  push:
+    branches: ["agent/text-to-cad"]
+
+jobs:
+  parser-and-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Deterministic Text-to-CAD tests
+        run: python -m unittest tests.test_text_to_cad
+      - name: Syntax check neural pipeline
+        run: >-
+          python -m py_compile
+          text_to_cad.py
+          text2cad_ml.py
+          train_text2cad.py
+          evaluate_text2cad.py
+          main_text_service.py
+          main_neural_text_service.py
+          build_text2cad_annotations.py
+          import_text2cad_annotations.py
+          merge_text2cad_annotations.py
+          check_text2cad_ready.py

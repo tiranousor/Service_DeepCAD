@@ -1,0 +1,23 @@
+# DeepCAD / Text2CAD datasets (large, reproducible downloads)
+data/
+
+# Training artifacts and model checkpoints
+proj_log/Text2CAD/
+*.pth
+*.pth.tar
+
+# Generated CAD files
+generated_steps/
+*.step
+*.stp
+*.stl
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# macOS / editors
+.DS_Store
+.vscode/
+.idea/

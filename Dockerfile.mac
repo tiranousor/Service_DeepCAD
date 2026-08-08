@@ -1,0 +1,31 @@
+FROM tiranousor/deepcad:latest
+
+# The historical image may contain several Conda/Python environments.  The
+# /opt/conda base interpreter is not necessarily the environment used by
+# DeepCAD.  Find the interpreter that already has the numerical + OpenCASCADE
+# stack and install the lightweight web dependencies into that same env.
+RUN set -eux; \
+    DEEPCAD_PY=""; \
+    for py in /opt/conda/envs/*/bin/python /opt/conda/bin/python /usr/local/bin/python3 /usr/bin/python3; do \
+        if [ -x "$py" ] && "$py" -c 'import numpy; from OCC.Core.gp import gp_Pnt' >/dev/null 2>&1; then \
+            DEEPCAD_PY="$py"; \
+            break; \
+        fi; \
+    done; \
+    if [ -z "$DEEPCAD_PY" ]; then \
+        echo 'ERROR: could not find a Python environment containing both numpy and pythonocc/OCC.'; \
+        echo 'Available Conda environments:'; \
+        /opt/conda/bin/conda env list || true; \
+        echo 'Available Python executables:'; \
+        find /opt/conda -maxdepth 4 -type f -name 'python*' -perm -111 2>/dev/null || true; \
+        exit 1; \
+    fi; \
+    echo "Using DeepCAD Python: $DEEPCAD_PY"; \
+    ln -sf "$DEEPCAD_PY" /usr/local/bin/text2cad-python; \
+    /usr/local/bin/text2cad-python -m pip install --no-cache-dir \
+        fastapi==0.115.11 \
+        uvicorn==0.33.0 \
+        pydantic==2.10.6; \
+    /usr/local/bin/text2cad-python -c 'import numpy, fastapi, uvicorn; from OCC.Core.gp import gp_Pnt; print("Mac Text2CAD runtime OK")'
+
+WORKDIR /workspace

@@ -1,0 +1,17 @@
+services:
+  text2cad:
+    build:
+      context: .
+      dockerfile: Dockerfile.mac
+    image: service-deepcad-text2cad:mac
+    platform: linux/amd64
+    restart: "no"
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      - PYTHONPATH=/workspace:/app:/app/CadGen:/app/DeepCAD:/app/DeepCAD/CadGen
+      - TEXT2CAD_OUTPUT_DIR=/workspace/generated_steps
+    ports:
+      - "8000:8000"
+    command: /usr/local/bin/text2cad-python -m uvicorn main_text_service:app --host 0.0.0.0 --port 8000
