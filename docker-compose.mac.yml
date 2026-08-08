@@ -1,8 +1,11 @@
 services:
   text2cad:
-    image: tiranousor/deepcad:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.mac
+    image: service-deepcad-text2cad:mac
     platform: linux/amd64
-    restart: unless-stopped
+    restart: "no"
     working_dir: /workspace
     volumes:
       - ./:/workspace
@@ -11,4 +14,4 @@ services:
       - TEXT2CAD_OUTPUT_DIR=/workspace/generated_steps
     ports:
       - "8000:8000"
-    command: python -m uvicorn main_text_service:app --host 0.0.0.0 --port 8000
+    command: /opt/conda/bin/python -m uvicorn main_text_service:app --host 0.0.0.0 --port 8000
