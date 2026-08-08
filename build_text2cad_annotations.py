@@ -1,16 +1,9 @@
 """Create paired text/CAD annotations directly from the DeepCAD JSON dataset.
 
-This provides a reproducible training corpus without changing the original CAD
-representation.  Captions describe the construction history in engineering
-language (sketch primitives, positions and extrude/boolean operations).
-
-The resulting JSONL can be consumed by ``train_text2cad.py``.
-
-Example:
-    python build_text2cad_annotations.py \
-        --data-root data \
-        --output data/text2cad_annotations.jsonl \
-        --language ru
+The split is inherited from DeepCAD. Multiple deterministic wording variants can
+be generated for each CAD history so the text encoder does not memorize one
+fixed sentence template. Geometry and dimensions are never changed by the text
+augmentation.
 """
 
 from __future__ import annotations
@@ -130,18 +123,77 @@ def describe_model(data: Dict[str, Any], language: str = "ru") -> str:
     return " ".join(chunks)
 
 
+def wording_variant(text: str, language: str, variant: int) -> str:
+    """Change wording only; every numeric/geometric token remains untouched."""
+    if variant == 0:
+        return text
+    if language == "ru":
+        replacements = [
+            (
+                ("Шаг ", "Этап "),
+                ("эскиз в начале координат", "эскиз расположен в точке"),
+                (" с нормалью ", ", нормаль "),
+                ("Выполнить выдавливание на", "Выдавить профиль на"),
+                (" и создать новое тело", ", создав новое тело"),
+                (" и объединить с телом", ", объединив с существующим телом"),
+                (" и вырезать из тела", ", выполнив вычитание из тела"),
+                (" и оставить пересечение", ", выполнив пересечение"),
+            ),
+            (
+                ("Шаг ", "Операция "),
+                ("контур ", "замкнутый контур "),
+                ("окружность с центром", "круговой элемент с центром"),
+                ("линия из", "отрезок от"),
+                ("дуга из", "дуга от"),
+                ("Выполнить выдавливание на", "Экструдировать на"),
+            ),
+        ]
+    else:
+        replacements = [
+            (
+                ("Step ", "Stage "),
+                ("sketch at origin", "place a sketch at"),
+                (" with normal ", ", normal "),
+                ("Extrude by", "Extrude the profile by"),
+                (" and create a new body", ", creating a new body"),
+                (" and join with the body", ", joining the existing body"),
+                (" and cut from the body", ", subtracting it from the body"),
+            ),
+            (
+                ("Step ", "Operation "),
+                ("loop ", "closed loop "),
+                ("circle centered at", "circular element centered at"),
+                ("line from", "segment from"),
+                ("Extrude by", "Apply an extrusion of"),
+            ),
+        ]
+
+    mapping = replacements[(variant - 1) % len(replacements)]
+    result = text
+    for source, target in mapping:
+        result = result.replace(source, target)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-root", default="data")
     parser.add_argument("--output", default="data/text2cad_annotations.jsonl")
-    parser.add_argument("--language", choices=["ru", "en"], default="ru")
+    parser.add_argument("--language", choices=["ru", "en", "both"], default="ru")
+    parser.add_argument(
+        "--variants", type=int, default=3,
+        help="number of wording variants per CAD model and language (recommended: 3)",
+    )
     args = parser.parse_args()
+    if args.variants < 1:
+        raise ValueError("--variants must be >= 1")
 
     split_path = os.path.join(args.data_root, "train_val_test_split.json")
     cad_root = os.path.join(args.data_root, "cad_json")
     with open(split_path, "r", encoding="utf-8") as fp:
         splits = json.load(fp)
 
+    languages = ["ru", "en"] if args.language == "both" else [args.language]
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     written = 0
     skipped = 0
@@ -152,22 +204,29 @@ def main():
                 try:
                     with open(path, "r", encoding="utf-8") as fp:
                         data = json.load(fp)
-                    text = describe_model(data, args.language)
-                    if not text:
-                        skipped += 1
-                        continue
-                    out.write(json.dumps({
-                        "id": data_id,
-                        "text": text,
-                        "split": split,
-                        "source": "deepcad_history_template",
-                    }, ensure_ascii=False) + "\n")
-                    written += 1
+                    for language in languages:
+                        base_text = describe_model(data, language)
+                        if not base_text:
+                            continue
+                        for variant in range(args.variants):
+                            text = wording_variant(base_text, language, variant)
+                            out.write(json.dumps({
+                                "id": data_id,
+                                "text": text,
+                                "split": split,
+                                "source": "deepcad_history_template_v{}".format(variant + 1),
+                                "language": language,
+                            }, ensure_ascii=False) + "\n")
+                            written += 1
                 except Exception as exc:
                     skipped += 1
                     print("skip {}: {}".format(data_id, exc))
 
-    print("written={}, skipped={}, output={}".format(written, skipped, args.output))
+    print(
+        "written={}, skipped={}, languages={}, variants={}, output={}".format(
+            written, skipped, ",".join(languages), args.variants, args.output
+        )
+    )
 
 
 if __name__ == "__main__":
