@@ -1,0 +1,28 @@
+FROM tiranousor/deepcad:latest
+
+# Reuse the Python environment in the historical DeepCAD image that already
+# contains PyTorch, NumPy, HDF5 and pythonocc/OpenCASCADE. CUDA does not have to
+# be visible at image-build time; it is provided by NVIDIA Container Toolkit at
+# runtime.
+RUN set -eux; \
+    DEEPCAD_PY=""; \
+    for py in /opt/conda/envs/*/bin/python /opt/conda/bin/python /usr/local/bin/python3 /usr/bin/python3; do \
+        if [ -x "$py" ] && "$py" -c 'import numpy, h5py, torch; from OCC.Core.gp import gp_Pnt' >/dev/null 2>&1; then \
+            DEEPCAD_PY="$py"; \
+            break; \
+        fi; \
+    done; \
+    if [ -z "$DEEPCAD_PY" ]; then \
+        echo 'ERROR: could not find the DeepCAD Python environment (numpy+h5py+torch+OCC).'; \
+        /opt/conda/bin/conda env list || true; \
+        exit 1; \
+    fi; \
+    echo "Using DeepCAD GPU Python: $DEEPCAD_PY"; \
+    ln -sf "$DEEPCAD_PY" /usr/local/bin/deepcad-python; \
+    /usr/local/bin/deepcad-python -m pip install --no-cache-dir \
+        fastapi==0.115.11 \
+        uvicorn==0.33.0 \
+        pydantic==2.10.6; \
+    /usr/local/bin/deepcad-python -c 'import numpy,h5py,torch,fastapi,uvicorn; from OCC.Core.gp import gp_Pnt; print("DeepCAD GPU runtime prepared, torch=" + torch.__version__)'
+
+WORKDIR /workspace
