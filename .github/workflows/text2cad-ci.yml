@@ -26,4 +26,6 @@ jobs:
           main_text_service.py
           main_neural_text_service.py
           build_text2cad_annotations.py
+          import_text2cad_annotations.py
+          merge_text2cad_annotations.py
           check_text2cad_ready.py
